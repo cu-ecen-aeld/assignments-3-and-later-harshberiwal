@@ -26,7 +26,7 @@ fi
 #Moving to Path Directory
 cd ${filesdir}
 
-#Calculating Number of matching Files 
+#Calculating Number of matching Files for the string
 X=$(grep -lr ${searchstr} * | wc -l)
 
 #Calculating Number of matching lines
