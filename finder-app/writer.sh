@@ -18,4 +18,5 @@ fi
 #Creating Directory if not present
 mkdir -p $(dirname ${writefile})
 
+#Printing String on the File. 
 echo ${writestr} > ${writefile}
