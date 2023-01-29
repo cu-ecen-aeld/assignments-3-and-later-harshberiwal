@@ -1,0 +1,17 @@
+CR_COMPILED =$(CROSS_COMPILE)gcc 
+CR_FLAGS=-Wall
+MAIN_TARGET= writer
+
+.PHONY: all
+
+all: $(MAIN_TARGET)
+
+$(MAIN_TARGET): $(MAIN_TARGET).o
+	$(CR_COMPILED) $(CR_FLAGS) -o $(MAIN_TARGET) $(MAIN_TARGET).o 
+	
+$(MAIN_TARGET).o: $(MAIN_TARGET).c
+	$(CR_COMPILED) $(CR_FLAGS) -c $(MAIN_TARGET).c -o $(MAIN_TARGET).o 
+	
+.PHONY: clean
+clean: 
+	rm -f *.o  $(MAIN_TARGET)
