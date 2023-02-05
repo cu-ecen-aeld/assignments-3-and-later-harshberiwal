@@ -100,27 +100,27 @@ cp -a $SYSROOT/lib64/libm-2.31.so lib64
 cp -a $SYSROOT/lib64/libresolv.so.2 lib64
 cp -a $SYSROOT/lib64/libresolv-2.31.so lib64
 
-echo "Coming" 
+
 # Make device nodes
-cd "${OUTDIR}/rootfs"
-sudo mknod -m 666 dev/null c 1 3 
-sudo mknod -m 600 dev/concole c 5 1 
+
+sudo mknod -m 666 dev/null c 1 3
+sudo mknod -m 600 dev/console c 5 1
 
 # Clean and build the writer utility
-cd ${FINDER_APP_DIR}
-make clean 
-make CROSS_COMPILE=${CROSS_COMPILE}
+cd $FINDER_APP_DIR
+make clean
+make CROSS_COMPILE=$CROSS_COMPILE
 
 # Copy the finder related scripts and executables to the /home directory
 # on the target rootfs
 if [ -f writer ]
 then
-    cp writer "$OUTDIR/rootfs/home/"
-    cp finder.sh "$OUTDIR/rootfs/home/"
-    mkdir "$OUTDIR/rootfs/home/conf/"
-    cp conf/* "$OUTDIR/rootfs/home/conf/"
-    cp finder-test.sh "$OUTDIR/rootfs/home/"
-    cp autorun-qemu.sh "$OUTDIR/rootfs/home/"
+    cp writer $OUTDIR/rootfs/home/
+    cp finder.sh $OUTDIR/rootfs/home/
+    mkdir $OUTDIR/rootfs/home/conf/
+    cp conf/* $OUTDIR/rootfs/home/conf/
+    cp finder-test.sh $OUTDIR/rootfs/home/
+    cp autorun-qemu.sh $OUTDIR/rootfs/home/
 fi
 
 # Chown the root directory
@@ -128,7 +128,6 @@ cd "${OUTDIR}/rootfs"
 sudo chown -R root:root *
 
 # Create initramfs.cpio.gz
-cd "${OUTDIR}/rootfs"
 find . | cpio -H newc -ov --owner root:root > ../initramfs.cpio
 cd ..
-gzip initramfs.cpio 
+gzip -f initramfs.cpio 
