@@ -43,6 +43,7 @@ bool start_thread_obtaining_mutex(pthread_t *thread, pthread_mutex_t *mutex,int 
 	
 	if(pthread_create(thread, NULL, threadfunc, thread_param) != 0) {
 		ERROR_LOG("Failed to create the thread\n"); 
+		free(thread_param); 
 	}
 	else {
 		DEBUG_LOG("Thread created successfully\n");
