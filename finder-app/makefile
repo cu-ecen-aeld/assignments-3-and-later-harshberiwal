@@ -1,17 +1,12 @@
-CR_COMPILED =$(CROSS_COMPILE)gcc 
-CR_FLAGS=-Wall
-MAIN_TARGET= writer
+CC= $(CROSS_COMPILE)gcc
+.PHONY : all
 
-.PHONY: all
+all:writer.c
+	$(CC) writer.c -Wall -Werror -o writer
+	 
+.PHONY:clean
+clean:
+	rm -f *.o writer
 
-all: $(MAIN_TARGET)
 
-$(MAIN_TARGET): $(MAIN_TARGET).o
-	$(CR_COMPILED) $(CR_FLAGS) -o $(MAIN_TARGET) $(MAIN_TARGET).o 
-	
-$(MAIN_TARGET).o: $(MAIN_TARGET).c
-	$(CR_COMPILED) $(CR_FLAGS) -c $(MAIN_TARGET).c -o $(MAIN_TARGET).o 
-	
-.PHONY: clean
-clean: 
-	rm -f *.o  $(MAIN_TARGET)
+

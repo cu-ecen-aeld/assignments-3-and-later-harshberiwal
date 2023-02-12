@@ -1,4 +1,3 @@
-
 #!/bin/sh
 # Tester script for assignment 1 and assignment 2
 # Author: Siddhant Jajoo
@@ -59,11 +58,8 @@ do
 done
 
 OUTPUTSTRING=$(finder.sh "$WRITEDIR" "$WRITESTR")
-
-F_PATH="/tmp/assignment4-result.txt"
-
-echo ${OUTPUTSTRING} > ${FILEPATH}
-
+FINDER_PATH=/tmp/assignment4-result.txt
+echo ${OUTPUTSTRING}  >  ${FINDER_PATH}
 # remove temporary directories
 rm -rf /tmp/aeld-data
 
@@ -76,3 +72,4 @@ else
 	echo "failed: expected  ${MATCHSTR} in ${OUTPUTSTRING} but instead found"
 	exit 1
 fi
+
