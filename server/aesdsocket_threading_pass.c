@@ -14,8 +14,9 @@
 #include <errno.h>
 #include "queue.h"
 #include "pthread.h"
-#include "sys/time.h" 
+#include <sys/time.h>
 
+#define MAX_TIMESTR_SIZE 100
 #define BUFFER_SIZE 		 100
 #define PORT_NUMBER 		"9000"
 #define PATH_TO_FILE 		"/var/tmp/aesdsocketdata.txt"
@@ -25,7 +26,7 @@ int sock_fd;
 bool signal_interrupted = false;
 pthread_mutex_t mutex; 
 int total_packets =0; 
-int g_datafd= 0; 
+int g_datafd; //global file descriptor to allow timestamp interval timer to access data file
 
 typedef struct thread_nodes{
 	pthread_t thread; 
@@ -34,34 +35,49 @@ typedef struct thread_nodes{
 	SLIST_ENTRY(thread_nodes) entries; 
 }thread_nodes_t; 
 
-void sig_alarm_handler(int signo){
+
+//time stamp alarm handler (handle sigalrm)
+void ts_alarm_handler(int signo){
     time_t time_now;
     time_t ret = time(&time_now);
     if(ret == -1){
-        syslog(LOG_ERR,"Unable to get the Time\r\n");
+        syslog((LOG_USER | LOG_INFO),"Error getting timestamp\r\n");
         return;
     }
+
     struct tm tm_now;
+
+
     localtime_r(&time_now,&tm_now);
-    char time_buff[BUFFER_SIZE];
-    size_t time_str_size = strftime(time_buff,BUFFER_SIZE,"timestamp:%a, %d %b %Y %T %z\n",&tm_now);
+    //2822 format: "%a, %d %b %Y %T %z"
+    //weekday, day of month, month, year, 24hr time (H:M:S), numeric timezone
+    char time_buff[MAX_TIMESTR_SIZE];
+    size_t time_str_size = strftime(time_buff,MAX_TIMESTR_SIZE,"timestamp:%a, %d %b %Y %T %z\n",&tm_now);
     if (!time_str_size){
-        syslog(LOG_ERR,"Unable to get the Timestamp\n");
+        syslog((LOG_USER | LOG_INFO),"timestamp not generated\r\n");
         return;
     }
-	pthread_mutex_lock(&mutex);
-	g_datafd = open(PATH_TO_FILE, O_WRONLY | O_APPEND); 
-	if(g_datafd == -1){
-		syslog(LOG_ERR,"Couldn't open the file\n");
-		return;
-	}
-	total_packets +=time_str_size; 
-	if((write(g_datafd, time_buff,time_str_size)) < time_str_size) {
-		 syslog(LOG_ERR,"Unable to write the Timestamp\n");
-		return;
-	}
-	close(g_datafd);
-	pthread_mutex_unlock(&mutex);
+	syslog(LOG_INFO, "In SigALRM Handler\n"); 
+	
+    ssize_t bytes_written = 0;
+    while (bytes_written != time_str_size){
+        
+        pthread_mutex_lock(&mutex);
+		g_datafd = open(PATH_TO_FILE, O_WRONLY| O_APPEND); 
+		if(g_datafd == -1){
+			syslog(LOG_ERR, "Error in opening file for TimeStamp\n"); 
+			break; 
+		}
+        bytes_written = write(g_datafd, time_buff,(time_str_size-bytes_written));
+        pthread_mutex_unlock(&mutex);
+        close(g_datafd);
+        if (bytes_written == -1){
+            syslog((LOG_USER | LOG_INFO),"Error writing timestamp!");
+            return;
+        }
+    }
+
+
     return;
 }
 
@@ -78,20 +94,6 @@ void signal_handler(int signal_t)
 	close(sock_fd);
 }
 
-void timer_init() {
-	struct itimerval ts_delay;
-	ts_delay.it_value.tv_sec = 10;	  // Inital delay
-	ts_delay.it_value.tv_usec = 0;	  
-	ts_delay.it_interval.tv_sec = 10; // repeated interval
-	ts_delay.it_interval.tv_usec = 0; 
-
-	tzset();
-
-	if(setitimer(ITIMER_REAL, &ts_delay, NULL)) {
-		perror("settimer failure");
-		return;
-	}
-}
 
 void* thread_connection_func(void* thread_node_params) {
 	char *h_dynamic_buff = NULL; 
@@ -115,8 +117,8 @@ void* thread_connection_func(void* thread_node_params) {
 					syslog(LOG_ERR,"Unable to Recv Correctly\n");
 					t_node_params->complete_success_flag= true;
 					close(t_node_params->confd); 
-					pthread_exit(NULL);
 					return NULL;
+                   // pthread_exit(NULL);
 				}
 				else if (recv_status == 0){	    
 					all_received = 1;   
@@ -134,13 +136,12 @@ void* thread_connection_func(void* thread_node_params) {
 							syslog(LOG_ERR,"Realloc Failure. Couldn't allocate Additional Memory\r\n");
 							t_node_params->complete_success_flag= true;
 							close(t_node_params->confd); 
-							pthread_exit(NULL);
 							return NULL;
 						}
 					}
 				}
 			}
-		
+			
 			if (nl_char_received) {
 				pthread_mutex_lock(&mutex); 
 				file_fd = open(PATH_TO_FILE, O_APPEND | O_WRONLY); //Open the file in write only
@@ -149,14 +150,13 @@ void* thread_connection_func(void* thread_node_params) {
 					t_node_params->complete_success_flag= true;
 					close(t_node_params->confd); 
 					return NULL;
-				} 
-				if(write(file_fd, h_dynamic_buff,packet_bytes) < packet_bytes) {  //Writing to the File 
+				}
+				if(write(file_fd, h_dynamic_buff,packet_bytes) < packet_bytes) {
 					syslog(LOG_ERR,"Unable to Write all the bytes\n");
 					t_node_params->complete_success_flag= true;
 					close(t_node_params->confd); 
 					return NULL;
 				}
-				close(file_fd);
 				total_packets+=packet_bytes;
 				pthread_mutex_unlock(&mutex); 
 				packet_bytes = 1; 	   				
@@ -167,8 +167,10 @@ void* thread_connection_func(void* thread_node_params) {
 					close(t_node_params->confd); 
 					return NULL;
 				}
-				pthread_mutex_lock(&mutex);
-				file_fd=open(PATH_TO_FILE,O_RDONLY); 					//Opening file to Read 
+				close(file_fd); 
+				pthread_mutex_lock(&mutex); 
+				char send_buffer[total_packets]; 			        //Storing contents to send	
+				file_fd=open(PATH_TO_FILE,O_RDONLY); 				//Opening file to Read 
 				if(file_fd==-1) {
 					printf("Unable to open in read mode\n");
 					syslog(LOG_ERR, "Unable to open the File: %s \n", strerror(errno));
@@ -176,7 +178,7 @@ void* thread_connection_func(void* thread_node_params) {
 					close(t_node_params->confd); 
 					return NULL;
 				}
-				char send_buffer[total_packets]; 			        	//Storing contents to send
+
 				if(read(file_fd,&send_buffer,total_packets)==-1) {  	//Read the file and storing contents in a buffer
 					printf("Unable to read the file\n");
 					syslog(LOG_ERR, "Unable to Read from the file. Check Permissions: %s \n", strerror(errno));
@@ -187,20 +189,21 @@ void* thread_connection_func(void* thread_node_params) {
 				close(file_fd);
 				pthread_mutex_unlock(&mutex); 
 				
-				if(send(t_node_params ->confd,&send_buffer,total_packets,0)==-1) { 	//Send data packet to the client 
+				//Send data packet to the client 
+				if(send(t_node_params ->confd,&send_buffer,total_packets,0)==-1) {
 					printf("Unable to send the contents\n");
 					syslog(LOG_ERR, "Unable to send the buffer Contents to the client:%s \n", strerror(errno));
 					t_node_params->complete_success_flag= true;
 					close(t_node_params->confd); 
 					return NULL;
-				} 
+				}
 			}
 		}
-		close(t_node_params->confd); 
-		syslog(LOG_INFO,"Closed connection"); 
-		free(h_dynamic_buff);
-		t_node_params->complete_success_flag = true;     
-		pthread_exit(NULL);
+		 close(t_node_params->confd); 
+		 syslog(LOG_INFO,"Closed connection"); 
+		 free(h_dynamic_buff);
+   		 t_node_params->complete_success_flag = true;     
+   		 pthread_exit(NULL);
 }
 
 
@@ -212,13 +215,12 @@ int main(int argc, char *argv[])
 	struct sockaddr_in clt_addr; 
 	thread_nodes_t *t_node; 
 	int total_conn =0 ; 
-	int file_fd; 
-	thread_nodes_t *node = NULL;
-	thread_nodes_t *ptr = NULL;
-
+	int file_fd =0;
+	thread_nodes_t *curThread = NULL;
+	thread_nodes_t *tmpPtr = NULL;
+	//pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER; 
 	openlog(NULL,0, LOG_USER); 			//To setup logging with LOG_USER
-	printf("pid is %d\n", getpid());
-
+	
 	if(signal(SIGINT,signal_handler)==SIG_ERR)
 	{
 		syslog(LOG_ERR,"SIGINT failed");
@@ -230,6 +232,7 @@ int main(int argc, char *argv[])
 		syslog(LOG_ERR,"SIGTERM failed");
 		return -1; 
 	}
+
 
 	SLIST_HEAD(slisthead,thread_nodes) head = SLIST_HEAD_INITIALIZER(head);
     SLIST_INIT(&head);
@@ -250,20 +253,17 @@ int main(int argc, char *argv[])
 		syslog(LOG_ERR, "Unable to create asocket\n");
 		exit(EXIT_FAILURE);
 	}
-
 	//Bind the socket 
 	if(bind(sock_fd,servinfo->ai_addr,sizeof(struct sockaddr)) == -1) {
 		printf("Unable to Bind\n");
 		syslog(LOG_ERR, "Unable to Bind%s \n", strerror(errno));
-		freeaddrinfo(servinfo); 							//Freeing the memory created by socket address before exiting 
-		close(sock_fd);
+		freeaddrinfo(servinfo); 			//Freeing the memory created by socket address before exiting 
 		exit(EXIT_FAILURE);
 	}
-	freeaddrinfo(servinfo); 								//Freeing the memory created by socket address
+	freeaddrinfo(servinfo); 				//Freeing the memory created by socket address
 	
 	if(listen(sock_fd,MAX_PENDING_CONNECTIONS) == -1) {		//Will start rejecting after 32 pending connections 
 		syslog(LOG_ERR, "Unable to Listen to the Clients%s \n", strerror(errno));
-		close(sock_fd);
 		exit(EXIT_FAILURE);
 	}	
 
@@ -276,21 +276,33 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	file_fd = open(PATH_TO_FILE,(O_RDWR|O_CREAT|O_TRUNC), S_IRWXU|S_IRGRP|S_IROTH); 	//Creating a new file with 744 octal value
- 	if (file_fd==-1) {
+	file_fd=open(PATH_TO_FILE, O_WRONLY|O_CREAT|O_TRUNC, S_IRWXU|S_IRGRP|S_IROTH); 	//Creating a new file with 744 octal value
+	if (file_fd==-1) {
 		syslog(LOG_ERR, "Unable to create the file%s \n", strerror(errno));
 		exit(EXIT_FAILURE);
 	}
+	close(file_fd);
+	    //Initialize mutex for packet data file
+    pthread_mutex_init(&mutex,NULL);   //Changes 
 
-	close(file_fd); 
-	
-	// Initialize mutex for packet data file
-	pthread_mutex_init(&mutex, NULL); 
+	 //Signal handler for sigalrm and 10 second interval timer setup
+    //Note only register this AFTER datafile has opened.
+    signal(SIGALRM, ts_alarm_handler);
 
-	signal(SIGALRM, sig_alarm_handler);
+    struct itimerval ts_delay;
+    ts_delay.it_value.tv_sec        = 10;  //first delay: 
+    ts_delay.it_value.tv_usec       = 0;   //first dalay us
+    ts_delay.it_interval.tv_sec     = 10;  //repeated delay
+    ts_delay.it_interval.tv_usec    = 0;   //repeated delay us
 
-	timer_init(); 											//Initializing timer 
+    tzset();
 
+    int ret = setitimer(ITIMER_REAL, &ts_delay, NULL);
+    if (ret){
+        perror("settimer failure");
+        return 1;
+    }
+	//Looping for all the connections from Client
 	while (!signal_interrupted)
 	{
 		conn_fd = accept(sock_fd,(struct sockaddr *)&clt_addr,&address_len);
@@ -299,47 +311,48 @@ int main(int argc, char *argv[])
 			break;
 		}
 		else {
-			t_node = (struct thread_nodes *)malloc(sizeof(struct thread_nodes));  
+			t_node = (struct thread_nodes *)malloc(sizeof(struct thread_nodes));  //changes 
 			t_node-> complete_success_flag = false;									
 			t_node-> confd = conn_fd;
 			syslog(LOG_INFO,"Accepts connection from %s",inet_ntoa(clt_addr.sin_addr));
 			printf("Accepts connection from %s\n",inet_ntoa(clt_addr.sin_addr));
 			if(pthread_create(&t_node -> thread, NULL, thread_connection_func, t_node) != 0){
 				 syslog(LOG_ERR, "Couldn't create a thread: %s", strerror(errno));
-				 goto thread_kill;
+				 break; 
+				 //goto cleanup;   //have to write cleanup. Could use return if we can go there. 
 			} 
 			if(total_conn == 0){
 				SLIST_INIT(&head);
 				SLIST_INSERT_HEAD(&head, t_node, entries); 
-				total_conn++;
 			}
 			else{
 				SLIST_INSERT_HEAD(&head, t_node, entries); 
-				total_conn++;
 			}
-			
-			SLIST_FOREACH_SAFE(node, &head, entries, ptr){
-				if(node -> complete_success_flag){
-					 pthread_join(node->thread,NULL); 
-                     SLIST_REMOVE(&head, node, thread_nodes, entries);
-                     free(node);
-                     syslog(LOG_INFO,"Closing Thread Connection %d\n",--total_conn);
+			total_conn++;
+			SLIST_FOREACH_SAFE(curThread, &head, entries, tmpPtr){
+				if(curThread -> complete_success_flag){
+					 syslog(LOG_INFO,"Cleaning Up threads connection\n");
+					 pthread_join(curThread->thread,NULL); 
+                     SLIST_REMOVE(&head, curThread, thread_nodes, entries);
+                     free(curThread);
+                     total_conn--;
+                     syslog(LOG_INFO,"Cleaning Up threads connection %d\n",total_conn);
 				}
 			}  
-		}	
+		}
 	}
 
-thread_kill:
-	syslog(LOG_INFO,"Checking if all threads are Killed");
-  	SLIST_FOREACH_SAFE(node, &head, entries, ptr){
-         pthread_kill(node->thread,SIGINT);
-         pthread_join(node->thread,NULL); 
-         SLIST_REMOVE(&head, node, thread_nodes, entries);
-         free(node);
-         syslog(LOG_INFO,"Killing all threads: %d\n",--total_conn);
+ 	  //Wait for threads to finish up 
+  	SLIST_FOREACH_SAFE(curThread, &head, entries, tmpPtr){
+         syslog(LOG_INFO,"Killing connection thread");
+         pthread_kill(curThread->thread,SIGINT);
+         pthread_join(curThread->thread,NULL); //TODO:might want to check retval rather than NULL
+         SLIST_REMOVE(&head, curThread, thread_nodes, entries);
+         free(curThread);
+         total_conn--;
+         syslog(LOG_INFO,"Killing Number of Connections: %d",total_conn);
     }
-	
-	close(file_fd);
+
 	close(conn_fd);
 	unlink(PATH_TO_FILE);
 	closelog(); //Close syslog

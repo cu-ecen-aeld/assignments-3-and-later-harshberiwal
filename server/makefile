@@ -2,7 +2,7 @@ CC= $(CROSS_COMPILE)gcc
 .PHONY : all
 
 all:aesdsocket.c
-	$(CC) aesdsocket.c -Wall -Werror -o aesdsocket
+	$(CC) aesdsocket.c -Wall -Werror -o aesdsocket -g -lpthread
 	 
 .PHONY:clean
 clean:
