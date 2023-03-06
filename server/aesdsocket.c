@@ -245,7 +245,7 @@ int main(int argc, char *argv[])
 	}
 	
 	//create socket for IPC
-	sock_fd=socket(PF_INET, SOCK_STREAM, 0);
+	sock_fd=socket(AF_INET, SOCK_STREAM, 0);
 	if(sock_fd==-1) {
 		syslog(LOG_ERR, "Unable to create asocket\n");
 		exit(EXIT_FAILURE);
