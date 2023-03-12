@@ -1,5 +1,12 @@
 #include "systemcalls.h"
-
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <string.h> 
 /**
  * @param cmd the command to execute with system()
  * @return true if the command in @param cmd was executed
@@ -10,6 +17,8 @@
 bool do_system(const char *cmd)
 {
 
+	if(system(cmd) !=0)
+		return false; 
 /*
  * TODO  add your code here
  *  Call the system() function with the command set in the cmd
@@ -58,11 +67,38 @@ bool do_exec(int count, ...)
  *   as second argument to the execv() command.
  *
 */
-
+    int wstatus; 
+    pid_t kidpid;
+    kidpid = fork(); 
+    if(kidpid == -1) {
+    	printf("Unable to create a Child Process"); 
+    	return false; 
+    }
+    if(kidpid == 0){
+    	if(execv(command[0],command) == -1) {
+    		printf("Unbale to Load Binary Code into memory"); 
+    		exit(1); 
+    	}
+    }
+    else {              
+	do {
+	   int w = waitpid(kidpid, &wstatus, WUNTRACED | WCONTINUED);
+	   if (w == -1) {
+	       perror("waitpid");
+	       return false; 
+	   }
+	   if (WIFEXITED(wstatus)) {
+		if(wstatus) 
+			return false; 
+		else 
+			return true; 
+	   } 
+	} while (!WIFEXITED(wstatus) && !WIFSIGNALED(wstatus));
+    }
     va_end(args);
-
     return true;
 }
+
 
 /**
 * @param outputfile - The full path to the file to write with command output.
@@ -83,7 +119,7 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     // this line is to avoid a compile warning before your implementation is complete
     // and may be removed
     command[count] = command[count];
-
+    
 
 /*
  * TODO
@@ -92,8 +128,43 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *   The rest of the behaviour is same as do_exec()
  *
 */
-
+    pid_t kidpid; 
+    int wstatus; 
+    int fd = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT, 0644);
+    if (fd < 0) { 
+    	perror("Unable to create the file\n"); 
+    	return false; 
+    }
+    switch (kidpid = fork()) {
+  	case -1: perror("Fork doesn't return a new Child Process\n"); 
+  		 return false; 
+  	case 0: if(dup2(fd,1) < 0) {
+  		     perror("Dup2 didn't work with the new fd"); 
+  		     return false; 
+  		}
+	   	close(fd); 
+	    	if(execv(command[0],command) == -1) {
+    			printf("Unbale to Load Binary Code into memory"); 
+    			exit(1); 
+    		}
+    		break; 
+  	default:
+    		close(fd);
+    		do {
+		  	int w = waitpid(kidpid, &wstatus, WUNTRACED | WCONTINUED);
+		   	if (w == -1) {
+		       	perror("waitpid");
+		      		return false; 
+		   	}
+		   	if (WIFEXITED(wstatus)) {
+				if(wstatus) 
+					return false; 
+				else 
+					return true; 
+		  	} 	
+		} while (!WIFEXITED(wstatus) && !WIFSIGNALED(wstatus));
+    		break; 
+}
     va_end(args);
-
     return true;
 }
