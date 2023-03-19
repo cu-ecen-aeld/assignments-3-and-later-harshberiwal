@@ -24,7 +24,7 @@
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
 
-MODULE_AUTHOR("Sankalp Agrawal"); /** TODO: fill in your name **/
+MODULE_AUTHOR("Harsh Beriwal"); /** TODO: fill in your name **/
 MODULE_LICENSE("Dual BSD/GPL");
 
 struct aesd_dev aesd_device;
