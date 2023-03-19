@@ -34,6 +34,7 @@ struct aesd_dev
     struct aesd_buffer_entry *element;	
     struct mutex lock; 
     struct cdev cdev;     /* Char device structure      */
+    int isComplete;
 };
 
 
