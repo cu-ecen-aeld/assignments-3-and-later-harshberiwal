@@ -103,33 +103,33 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 		return -ERESTARTSYS;
     }
 
-    if (dev->element->size == 0) {
-        dev->element->buffptr = (char *) kzalloc(count, GFP_KERNEL);
+    if (dev->element.size == 0) {
+        dev->element.buffptr = (char *) kzalloc(count, GFP_KERNEL);
     } else {
-        dev->element->buffptr = (char *) krealloc(dev->element->buffptr, \
-                                dev->element->size + count, GFP_KERNEL);
+        dev->element.buffptr = (char *) krealloc(dev->element.buffptr, \
+                                dev->element.size + count, GFP_KERNEL);
     }
 
-    if (dev->element->buffptr == NULL) {
+    if (dev->element.buffptr == NULL) {
         PDEBUG("failed to allocate memory\n");
         retval = -ENOMEM;
     } else {
         /* copy_from_user - returns number of bytes that could not be copied.
         * On success, this will be zero. */
-        retval = copy_from_user((void *) dev->element->buffptr + dev->element->size, buf, count);
+        retval = copy_from_user((void *) dev->element.buffptr + dev->element.size, buf, count);
 
         retval = count - retval;
-        dev->element->size += retval;
+        dev->element.size += retval;
         PDEBUG("copied %ld bytes from userspace to kernel space, total size %ld\n", \
-                    retval, dev->element->size);
+                    retval, dev->element.size);
 
-        if (dev->element->buffptr[(dev->element->size - 1)] == '\n') {
-            rtnptr = aesd_circular_buffer_add_entry(&dev->circularBuffer, dev->element);
+        if (dev->element.buffptr[(dev->element.size - 1)] == '\n') {
+            rtnptr = aesd_circular_buffer_add_entry(&dev->circularBuffer, &dev->element);
             if (rtnptr != NULL)
                 kfree(rtnptr);
 
-            dev->element->buffptr = NULL;
-            dev->element->size = 0;
+            dev->element.buffptr = NULL;
+            dev->element.size = 0;
         }
     }
 
@@ -181,7 +181,7 @@ int aesd_init_module(void)
      */
     //H&S
     mutex_init(&aesd_device.lock);
-    aesd_device.element = kmalloc(sizeof(struct aesd_buffer_entry), GFP_KERNEL);
+    //aesd_device.element = kmalloc(sizeof(struct aesd_buffer_entry), GFP_KERNEL);
     aesd_circular_buffer_init(&aesd_device.circularBuffer);
 
     result = aesd_setup_cdev(&aesd_device);
@@ -206,11 +206,6 @@ void aesd_cleanup_module(void)
 			kfree(element->buffptr);
 			element->size = 0;
 		}
-	}
-
-    if (aesd_device.element != NULL)
-    {
-		kfree(aesd_device.element);
 	}
 
     cdev_del(&aesd_device.cdev);
