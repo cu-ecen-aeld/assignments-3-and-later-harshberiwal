@@ -101,7 +101,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                    loff_t *f_pos)
 {
     ssize_t retval = 0;
-    int bytes_to_send = 0; 
+    int bytes_to_send = 0, index =0; 
     int entries = 0, total_bytes = 0; 
     char *element;
     const char *freed_buff;
@@ -125,7 +125,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 	mutex_unlock(&a_dev->lock);
   	return retval;
     }
-    for (int index = 0; index < count; index++) {
+    for (index = 0; index < count; index++) {
         if (element[index] == '\n') {
             bytes_to_send = 1; 
             entries = index+1; 
