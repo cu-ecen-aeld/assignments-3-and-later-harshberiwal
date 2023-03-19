@@ -92,43 +92,98 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                 loff_t *f_pos)
 {
-    ssize_t retval = -ENOMEM;
-    PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
-    const char* lBuffptr = NULL;
-    struct aesd_dev* in_dev;
+	ssize_t retval = count, i = 0;
+	char* lBuffptr = NULL;
+	// remove this
+	struct aesd_dev* aDev = (struct aesd_dev*)filp->private_data;
+	struct aesd_buffer_entry ret = 
+	{
+		.buffptr = NULL,
+		.size = 0
+	};
+	//PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
+	/**
+	 * TODO: handle write
+	 */
 	
-    in_dev = filp->private_data;
-    if (mutex_lock_interruptible(&in_dev->lock) != 0)
-    {
-        printk(KERN_INFO "Failed to aquire Mutex.\n");
-        mutex_unlock(&in_dev->lock);
-	return retval;
-    }
-    if (in_dev->element->size == 0) {
-        in_dev->element->buffptr = (char *)kzalloc(count, GFP_KERNEL);
-    }
-    else {
-        in_dev->element->buffptr = (char *)krealloc(in_dev->element->buffptr, in_dev->element->size + count, GFP_KERNEL);
-    }
-	if (in_dev->element->buffptr != NULL) {
-		retval = copy_from_user((void *)in_dev->element->buffptr + in_dev->element->size, buf, count);
-		retval = count - retval;
-		in_dev->element->size += retval;
-		if (in_dev->element->buffptr[(in_dev->element->size - 1)] == '\n')
+	//printk(KERN_INFO "Mallocing %ld bytes.\n", count);
+	*f_pos = 0;	
+	if(aDev->isComplete)
+	{
+		aDev->element->buffptr = kmalloc(count*sizeof(uint8_t), GFP_KERNEL);
+		if(aDev->element->buffptr == NULL)
 		{
-		    lBuffptr = aesd_circular_buffer_add_entry(&in_dev->circularBuffer, in_dev->element);
-		    if (lBuffptr != NULL) {
-			kfree(lBuffptr);
-		    }
-		    in_dev->element->size = 0;
-		    in_dev->element->buffptr = NULL;
+			//printk(KERN_ERR "Mallocing failed %d.\n", __LINE__);
+			return -EFAULT;
 		}
-	 }
-    mutex_unlock(&in_dev->lock);
+		aDev->element->size = 0;
+		printk(KERN_INFO "Malloc %p\n", aDev->element->buffptr);
+		lBuffptr = aDev->element->buffptr;
+	}
+	else if(!aDev->isComplete)
+	{
+		aDev->element->buffptr = krealloc(aDev->element->buffptr, (aDev->element->size + count), GFP_KERNEL);	
 
-    return retval;
+		if(aDev->element->buffptr == NULL)
+		{
+			//printk(KERN_ERR "reallocing failed %d.\n", __LINE__);
+			return -EFAULT;
+		}
+		else
+		{
+			printk(KERN_INFO "Passed realloc %ld, %ld\n", aDev->element->size, count);
+			lBuffptr = aDev->element->buffptr + aDev->element->size;
+		}
+	}
+	if(!copy_from_user(lBuffptr, buf, count))
+	{
+		//printk(KERN_INFO "Successful in copying %ld bytes. %s %s\n", count, lBuffptr, aDev->element->buffptr);
+
+		aDev->element->size += count;
+		retval = count;
+	}
+	else
+	{
+		//printk(KERN_ERR "Unuccessful in copying %ld bytes.\n", count);
+		return -EFAULT;
+	}
+
+	for (i = 0; i < aDev->element->size; i++)
+	{
+		if (lBuffptr[i] == '\n')
+		{
+			printk(KERN_INFO "New line found.\n");
+			// reset the flag
+			aDev->isComplete = 1;	
+
+			if (mutex_lock_interruptible(&aDev->lock) != 0)
+			{
+				printk(KERN_INFO "Mutex failed to aquire.\n");
+				return -EFAULT;
+			}
+			
+			// add the entry to the circular buffer
+			ret = aesd_circular_buffer_add_entry(&aDev->circularBuffer, aDev->element);
+			mutex_unlock(&aDev->lock);
+			
+			aDev->element->size = 0;
+			if(ret.buffptr != NULL)
+			{	
+				printk(KERN_INFO "Freeing memory. %p\n", ret.buffptr);
+				kfree(ret.buffptr);
+				ret.buffptr = NULL;
+			}
+			
+		}
+		else 
+		{
+			aDev->isComplete = 0;
+		}
+		
+	}
+
+	return retval;
 }
-
 
 struct file_operations aesd_fops = {
     .owner =    THIS_MODULE,
@@ -172,6 +227,7 @@ int aesd_init_module(void)
      */
     //H&S
    // mutex_init(&aesd_device.lock);
+    aesd_device.isComplete = 1;
     aesd_device.element = kmalloc(sizeof(struct aesd_buffer_entry), GFP_KERNEL);
 	aesd_circular_buffer_init(&aesd_device.circularBuffer);
 
