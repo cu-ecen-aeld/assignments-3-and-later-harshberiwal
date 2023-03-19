@@ -116,7 +116,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 
         if (in_dev->element->buffptr[(in_dev->element->size - 1)] == '\n')
         {
-            lBuffptr = aesd_circular_buffer_add_entry(&in_dev->circularBuffer, &in_dev->element);
+            lBuffptr = aesd_circular_buffer_add_entry(&in_dev->circularBuffer, in_dev->element);
             if (lBuffptr != NULL) {
                 kfree(lBuffptr);
 	    }
@@ -124,7 +124,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
             in_dev->element->buffptr = NULL;
         }
     }
-    mutex_unlock(&dev->lock);
+    mutex_unlock(&in_dev->lock);
 
     return retval;
 }
