@@ -186,7 +186,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 			}
 			
 			// add the entry to the circular buffer
-			ret = aesd_circular_buffer_add_entry(&aDev->circularBuffer, aDev->element);
+			ret.buffptr = aesd_circular_buffer_add_entry(&aDev->circularBuffer, aDev->element);
 			mutex_unlock(&aDev->lock);
 			
 			aDev->element->size = 0;
