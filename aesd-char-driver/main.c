@@ -197,7 +197,7 @@ void aesd_cleanup_module(void)
 	}
 
     cdev_del(&aesd_device.cdev);
-    mutex_destroy(&aesd_device.lock);
+    //mutex_destroy(&aesd_device.lock);
     unregister_chrdev_region(devno, 1);
 }
 
