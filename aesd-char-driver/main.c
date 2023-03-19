@@ -30,9 +30,9 @@ struct aesd_dev aesd_device;
 
 int aesd_open(struct inode *inode, struct file *filp)
 {
+    struct aesd_dev *in_dev = NULL; 
     PDEBUG("open");
     //finding the aesd_dev data structure linked with the inode and assigning it to private_data
-    struct aesd_dev *in_dev = NULL; 
     in_dev = container_of(inode ->i_cdev, struct aesd_dev,cdev);
     filp->private_data = in_dev; 
     return 0;
@@ -63,7 +63,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 		return -ERESTARTSYS;
     }
 
-    entry = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->cb, *f_pos, &entry_offset);
+    entry = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->circularBuffer, *f_pos, &entry_offset);
     if (entry != NULL) {
         retval = copy_to_user(buf, (entry->buffptr + entry_offset), (entry->size - entry_offset));
         retval = (entry->size - entry_offset) - retval;
