@@ -190,7 +190,7 @@ void aesd_cleanup_module(void)
     dev_t devno = MKDEV(aesd_major, aesd_minor);
     int count=0;
     //S
-    AESD_CIRCULAR_BUFFER_FOREACH(entry, &aesd_device.circularBuffer, count) 
+    AESD_CIRCULAR_BUFFER_FOREACH(element, &aesd_device.circularBuffer, count) 
 	{
 		if(element->buffptr != NULL)
 		{
