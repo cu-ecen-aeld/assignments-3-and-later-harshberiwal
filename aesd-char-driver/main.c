@@ -101,93 +101,83 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                    loff_t *f_pos)
 {
     ssize_t retval = 0;
+    int bytes_to_send = 0; 
+    int entries = 0, total_bytes = 0; 
     char *element;
-    const char *replaced_buffer;
-    int i, packet_send = 0, tmp_store = 0, tmp_total_size = 0; 
-    struct aesd_buffer_entry write_buffer;
+    const char *freed_buff;
+    struct aesd_buffer_entry w_buffer;
     struct aesd_dev *a_dev = filp->private_data;
 
     PDEBUG("write %zu bytes with offset %lld", count, *f_pos);
-    /**
-     * TODO: handle write
-     */
-    if (mutex_lock_interruptible(&a_dev->lock)!=0)
-	{
-		PDEBUG(KERN_ERR "Couldn't acquire Mutex\n");
-		return -EFAULT;
-	}
-
-    element = (char *)kmalloc(count, GFP_KERNEL);
-    if (element == NULL)
-    {
-        retval = -ENOMEM;
-        goto error_handler;
-    }
     
-    if (copy_from_user(element, buf, count)) 
-    {
+    if (mutex_lock_interruptible(&a_dev->lock)!=0) {
+	PDEBUG(KERN_ERR "Couldn't acquire Mutex\n");
+	return -EFAULT;
+    }
+    element = (char *)kmalloc(count, GFP_KERNEL);
+    if (element == NULL)  {
+        retval = -ENOMEM;
+        mutex_unlock(&a_dev->lock);
+  	return retval;
+    }
+    if (copy_from_user(element, buf, count))  {
         retval = -EFAULT;
-		goto error_handler;
-	}
-
-    for (i = 0; i < count; i++) 
-    {
-        if (element[i] == '\n') 
-        {
-            packet_send = 1; 
-            tmp_store = i+1; 
+	mutex_unlock(&a_dev->lock);
+  	return retval;
+    }
+    for (int index = 0; i < count; index++) {
+        if (element[index] == '\n') {
+            bytes_to_send = 1; 
+            entries = index+1; 
             break;
         }
     }
 
-    if (a_dev->buf_len == 0) 
-    {
+    if (a_dev->buf_len == 0) {
         a_dev->buff = (char *)kmalloc(count, GFP_KERNEL);
         if (a_dev->buff == NULL) 
         {
             retval = -ENOMEM;
-            goto free_memory;
+            kfree(element);
+	    mutex_unlock(&a_dev->lock);
+  	    return retval;
         }
         memcpy(a_dev->buff, element, count);
         a_dev->buf_len += count;
     } 
     else 
     {
-        if (packet_send)
-            tmp_total_size = tmp_store;
+        if (bytes_to_send)
+            total_bytes = entries;
         else
-            tmp_total_size = count;
+            total_bytes = count;
 
-        a_dev->buff = (char *)krealloc(a_dev->buff, a_dev->buf_len + tmp_total_size, GFP_KERNEL);
+        a_dev->buff = (char *)krealloc(a_dev->buff, a_dev->buf_len + total_bytes, GFP_KERNEL);
         if (a_dev->buff == NULL) 
         {
             retval = -ENOMEM;
-            goto free_memory;
+            kfree(element);
+	    mutex_unlock(&a_dev->lock);
+  	    return retval;
         }
       
-        memcpy(a_dev->buff + a_dev->buf_len, element, tmp_total_size);
-        a_dev->buf_len += tmp_total_size;        
+        memcpy(a_dev->buff + a_dev->buf_len, element, total_bytes);
+        a_dev->buf_len += total_bytes;        
     }
  
-    if (packet_send) 
+    if (bytes_to_send) 
     {
-        write_buffer.buffptr = a_dev->buff;
-        write_buffer.size = a_dev->buf_len;
-        replaced_buffer = aesd_circular_buffer_add_entry(&a_dev->circularBuffer, &write_buffer);
+        w_buffer.buffptr = a_dev->buff;
+        w_buffer.size = a_dev->buf_len;
+        freed_buff = aesd_circular_buffer_add_entry(&a_dev->circularBuffer, &w_buffer);
     
-        if (replaced_buffer != NULL)
-            kfree(replaced_buffer);
-        
+        if (freed_buff != NULL)
+            kfree(freed_buff);
         a_dev->buf_len = 0;
     } 
-
-    retval = count;
-
-    free_memory: 
-            kfree(element);
-    error_handler: 
-            mutex_unlock(&a_dev->lock);
-  
+    retval = count; 
+    kfree(element);
+    mutex_unlock(&a_dev->lock);
     return retval;
 }
 
@@ -245,7 +235,7 @@ int aesd_init_module(void)
 void aesd_cleanup_module(void)
 {
     int count = 0;
-    struct aesd_buffer_entry *buffer_element;
+    struct aesd_buffer_entry *element;
     dev_t devno = MKDEV(aesd_major, aesd_minor);
 
     cdev_del(&aesd_device.cdev);
@@ -254,12 +244,12 @@ void aesd_cleanup_module(void)
      * TODO: cleanup AESD specific poritions here as necessary
      */
 
-    AESD_CIRCULAR_BUFFER_FOREACH(buffer_element, &aesd_device.circularBuffer, count)
+    AESD_CIRCULAR_BUFFER_FOREACH(element, &aesd_device.circularBuffer, count)
     {
-        if (buffer_element->buffptr != NULL)
+        if (element->buffptr != NULL)
         {
-            kfree(buffer_element->buffptr);
-            buffer_element->size = 0;
+            kfree(element->buffptr);
+            element->size = 0;
         }
     }
 
