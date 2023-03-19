@@ -73,7 +73,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 		goto handle_error;
 	}
 
-    tmp_buffer = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->circular_buffer, *f_pos, &offset_byte);
+    tmp_buffer = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->circularBuffer, *f_pos, &offset_byte);
 
     if(tmp_buffer==NULL)
         goto handle_error;
@@ -146,16 +146,16 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         }
     }
 
-    if (dev->buffer_length == 0) 
+    if (dev->buf_len == 0) 
     {
-        dev->store_buffer = (char *)kmalloc(count, GFP_KERNEL);
-        if (dev->store_buffer == NULL) 
+        dev->buff = (char *)kmalloc(count, GFP_KERNEL);
+        if (dev->buff == NULL) 
         {
             retval = -ENOMEM;
             goto free_memory;
         }
-        memcpy(dev->store_buffer, tmp_buffer, count);
-        dev->buffer_length += count;
+        memcpy(dev->buff, tmp_buffer, count);
+        dev->buf_len += count;
     } 
     else 
     {
@@ -164,27 +164,27 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         else
             tmp_total_size = count;
 
-        dev->store_buffer = (char *)krealloc(dev->store_buffer, dev->buffer_length + tmp_total_size, GFP_KERNEL);
-        if (dev->store_buffer == NULL) 
+        dev->buff = (char *)krealloc(dev->buff, dev->buf_len + tmp_total_size, GFP_KERNEL);
+        if (dev->buff == NULL) 
         {
             retval = -ENOMEM;
             goto free_memory;
         }
       
-        memcpy(dev->store_buffer + dev->buffer_length, tmp_buffer, tmp_total_size);
-        dev->buffer_length += tmp_total_size;        
+        memcpy(dev->buff + dev->buf_len, tmp_buffer, tmp_total_size);
+        dev->buf_len += tmp_total_size;        
     }
  
     if (packet_send) 
     {
-        write_buffer.buffptr = dev->store_buffer;
-        write_buffer.size = dev->buffer_length;
-        replaced_buffer = aesd_circular_buffer_add_entry(&dev->circular_buffer, &write_buffer);
+        write_buffer.buffptr = dev->buff;
+        write_buffer.size = dev->buf_len;
+        replaced_buffer = aesd_circular_buffer_add_entry(&dev->circularBuffer, &write_buffer);
     
         if (replaced_buffer != NULL)
             kfree(replaced_buffer);
         
-        dev->buffer_length = 0;
+        dev->buf_len = 0;
     } 
 
     retval = count;
@@ -260,7 +260,7 @@ void aesd_cleanup_module(void)
      * TODO: cleanup AESD specific poritions here as necessary
      */
 
-    AESD_CIRCULAR_BUFFER_FOREACH(buffer_element, &aesd_device.circular_buffer, count)
+    AESD_CIRCULAR_BUFFER_FOREACH(buffer_element, &aesd_device.circularBuffer, count)
     {
         if (buffer_element->buffptr != NULL)
         {
