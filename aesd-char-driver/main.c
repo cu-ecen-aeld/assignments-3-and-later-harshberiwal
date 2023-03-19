@@ -93,38 +93,47 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                 loff_t *f_pos)
 {
     ssize_t retval = -ENOMEM;
-    PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
-    const char* lBuffptr = NULL;
-    struct aesd_dev* in_dev;
-	
-    in_dev = filp->private_data;
-    if (mutex_lock_interruptible(&in_dev->lock) != 0)
-    {
-        printk(KERN_INFO "Failed to aquire Mutex.\n");
-        mutex_unlock(&in_dev->lock);
-	return retval;
+    const char *rtnptr = NULL;
+    struct aesd_dev *dev = filp->private_data;
+
+    PDEBUG("write %zu bytes with offset %lld\n", count, *f_pos);
+
+    if (mutex_lock_interruptible(&dev->lock) != 0) {
+        PDEBUG("failed to acquire mutex\n");
+		return -ERESTARTSYS;
     }
-    if (in_dev->element->size == 0) {
-        in_dev->element->buffptr = (char *)kzalloc(count, GFP_KERNEL);
+
+    if (dev->element->size == 0) {
+        dev->element->buffptr = (char *) kzalloc(count, GFP_KERNEL);
+    } else {
+        dev->element->buffptr = (char *) krealloc(dev->element->buffptr, \
+                                dev->element->size + count, GFP_KERNEL);
     }
-    else {
-        in_dev->element->buffptr = (char *)krealloc(in_dev->element->buffptr, in_dev->element->size + count, GFP_KERNEL);
+
+    if (dev->element->buffptr == NULL) {
+        PDEBUG("failed to allocate memory\n");
+        retval = -ENOMEM;
+    } else {
+        /* copy_from_user - returns number of bytes that could not be copied.
+        * On success, this will be zero. */
+        retval = copy_from_user((void *) dev->element->buffptr + dev->element->size, buf, count);
+
+        retval = count - retval;
+        dev->element->size += retval;
+        PDEBUG("copied %ld bytes from userspace to kernel space, total size %ld\n", \
+                    retval, dev->element->size);
+
+        if (dev->element->buffptr[(dev->element->size - 1)] == '\n') {
+            rtnptr = aesd_circular_buffer_add_entry(&dev->circularBuffer, &dev->element);
+            if (rtnptr != NULL)
+                kfree(rtnptr);
+
+            dev->element->buffptr = NULL;
+            dev->element->size = 0;
+        }
     }
-	if (in_dev->element->buffptr != NULL) {
-		retval = copy_from_user((void *)in_dev->element->buffptr + in_dev->element->size, buf, count);
-		retval = count - retval;
-		in_dev->element->size += retval;
-		if (in_dev->element->buffptr[(in_dev->element->size - 1)] == '\n')
-		{
-		    lBuffptr = aesd_circular_buffer_add_entry(&in_dev->circularBuffer, in_dev->element);
-		    if (lBuffptr != NULL) {
-			kfree(lBuffptr);
-		    }
-		    in_dev->element->size = 0;
-		    in_dev->element->buffptr = NULL;
-		}
-	 }
-    mutex_unlock(&in_dev->lock);
+
+    mutex_unlock(&dev->lock);
 
     return retval;
 }
@@ -173,7 +182,7 @@ int aesd_init_module(void)
     //H&S
     mutex_init(&aesd_device.lock);
     aesd_device.element = kmalloc(sizeof(struct aesd_buffer_entry), GFP_KERNEL);
-	aesd_circular_buffer_init(&aesd_device.circularBuffer);
+    aesd_circular_buffer_init(&aesd_device.circularBuffer);
 
     result = aesd_setup_cdev(&aesd_device);
 
