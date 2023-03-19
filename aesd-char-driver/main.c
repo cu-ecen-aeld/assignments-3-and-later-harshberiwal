@@ -51,43 +51,32 @@ int aesd_release(struct inode *inode, struct file *filp)
 ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
                 loff_t *f_pos)
 {
-    ssize_t ret = 0, offset = 0;
-    PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
-
-    struct aesd_dev *in_dev = NULL;
-    in_dev = filp->private_data;
+    ssize_t retval = 0;
+    size_t entry_offset = 0;
     struct aesd_buffer_entry *entry = NULL;
+    struct aesd_dev *dev = filp->private_data;
 
-    //entry = in_dev->element;
+    PDEBUG("read %zu bytes with offset %lld\n", count, *f_pos);
 
-    if (mutex_lock_interruptible(&in_dev->lock) != 0)
-    {
-        printk(KERN_INFO "Failed to aquire Mutex.\n");
-        mutex_unlock(&in_dev->lock);
-	    return ret;
+    if (mutex_lock_interruptible(&dev->lock) != 0) {
+        PDEBUG("failed to acquire mutex\n");
+		return -ERESTARTSYS;
     }
 
-    entry = aesd_circular_buffer_find_entry_offset_for_fpos(&in_dev->circularBuffer, *f_pos, &offset);
+    entry = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->cb, *f_pos, &entry_offset);
+    if (entry != NULL) {
+        retval = copy_to_user(buf, (entry->buffptr + entry_offset), (entry->size - entry_offset));
+        retval = (entry->size - entry_offset) - retval;
+        *f_pos += retval;
+    }
 
-    if(entry == NULL)
-    {
-        mutex_unlock(&in_dev->lock);
-        return ret;
-    }
-    else {
-        if(copy_to_user(buf, (entry->buffptr + offset), (entry->size - offset)) == 0) {
-            ret = entry->size - offset;
-        }
-        else {
-            mutex_unlock(&in_dev->lock);
-	    return ret;
-        }
-    }
-    *f_pos += entry->size - offset; 
-    printk(KERN_INFO "New fpos %lld\n", *f_pos); 
-    mutex_unlock(&in_dev -> lock); 
-    return ret;
+    PDEBUG("aesd_read returns %ld\n", retval);
+
+    mutex_unlock(&dev->lock);
+
+    return retval;
 }
+
 
 ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                 loff_t *f_pos)
