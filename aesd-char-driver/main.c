@@ -64,7 +64,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 		return -ERESTARTSYS;
     }
 
-    entry = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->cb, *f_pos, &entry_offset);
+    entry = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->circularBuffer, *f_pos, &entry_offset);
     if (entry != NULL) {
         retval = copy_to_user(buf, (entry->buffptr + entry_offset), (entry->size - entry_offset));
         retval = (entry->size - entry_offset) - retval;
@@ -113,7 +113,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                     retval, dev->entry.size);
 
         if (dev->entry.buffptr[(dev->entry.size - 1)] == '\n') {
-            rtnptr = aesd_circular_buffer_add_entry(&dev->cb, &dev->entry);
+            rtnptr = aesd_circular_buffer_add_entry(&dev->circularBuffer, &dev->entry);
             if (rtnptr != NULL)
                 kfree(rtnptr);
 
