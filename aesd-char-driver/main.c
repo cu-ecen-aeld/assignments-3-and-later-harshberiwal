@@ -124,7 +124,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                     retval, dev->element->size);
 
         if (dev->element->buffptr[(dev->element->size - 1)] == '\n') {
-            rtnptr = aesd_circular_buffer_add_entry(&dev->circularBuffer, &dev->element);
+            rtnptr = aesd_circular_buffer_add_entry(&dev->circularBuffer, dev->element);
             if (rtnptr != NULL)
                 kfree(rtnptr);
 
@@ -199,7 +199,7 @@ void aesd_cleanup_module(void)
     dev_t devno = MKDEV(aesd_major, aesd_minor);
     int count=0;
     //S
-    AESD_CIRCULAR_BUFFER_FOREACH(entry, &aesd_device.circularBuffer, count) 
+    AESD_CIRCULAR_BUFFER_FOREACH(element, &aesd_device.circularBuffer, count) 
 	{
 		if(element->buffptr != NULL)
 		{
