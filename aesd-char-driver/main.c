@@ -167,7 +167,7 @@ int aesd_init_module(void)
     memset(&aesd_device,0,sizeof(struct aesd_dev));
 
     mutex_init(&aesd_device.lock);
-    aesd_circular_buffer_init(&aesd_device.cb);
+    aesd_circular_buffer_init(&aesd_device.circularBuffer);
 
     result = aesd_setup_cdev(&aesd_device);
     if (result) {
@@ -185,7 +185,7 @@ void aesd_cleanup_module(void)
 
     PDEBUG("cleanup_module\n");
 
-    AESD_CIRCULAR_BUFFER_FOREACH(entry, &aesd_device.cb, index) {
+    AESD_CIRCULAR_BUFFER_FOREACH(entry, &aesd_device.circularBuffer, index) {
         if (entry->buffptr != NULL) {
             PDEBUG("bufferptr - %s, size %ld\n", entry->buffptr, entry->size);
             kfree(entry->buffptr);
