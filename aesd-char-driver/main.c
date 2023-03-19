@@ -30,21 +30,21 @@ struct aesd_dev aesd_device;
 
 int aesd_open(struct inode *inode, struct file *filp)
 {
-    struct aesd_dev *in_dev = NULL; 
+    struct aesd_dev *dev = NULL; 
     PDEBUG("open");
     //finding the aesd_dev data structure linked with the inode and assigning it to private_data
-    in_dev = container_of(inode ->i_cdev, struct aesd_dev,cdev);
-    filp->private_data = in_dev; 
+    dev = container_of(inode ->i_cdev, struct aesd_dev,cdev);
+    filp->private_data = dev; 
     return 0;
 }
 
 int aesd_release(struct inode *inode, struct file *filp)
 {
     PDEBUG("release");
-    //struct aesd_dev *in_dev;
+    //struct aesd_dev *dev;
     filp ->private_data = NULL;
-    //in_dev = container_of(inode ->i_cdev, struct aesd_dev,cdev);
-    //(void)in_dev;
+    //dev = container_of(inode ->i_cdev, struct aesd_dev,cdev);
+    //(void)dev;
     return 0;
 }
 
