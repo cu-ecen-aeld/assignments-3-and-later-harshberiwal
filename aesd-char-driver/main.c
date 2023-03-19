@@ -32,7 +32,7 @@ int aesd_open(struct inode *inode, struct file *filp)
 {
     PDEBUG("open");
     //finding the aesd_dev data structure linked with the inode and assigning it to private_data
-    struct aesd_dev *in_dev; 
+    struct aesd_dev *in_dev = NULL; 
     in_dev = container_of(inode ->i_cdev, struct aesd_dev,cdev);
     filp->private_data = in_dev; 
     return 0;
@@ -41,9 +41,10 @@ int aesd_open(struct inode *inode, struct file *filp)
 int aesd_release(struct inode *inode, struct file *filp)
 {
     PDEBUG("release");
-    struct aesd_dev *in_dev;
-    in_dev = container_of(inode ->i_cdev, struct aesd_dev,cdev);
-    (void)in_dev;
+    //struct aesd_dev *in_dev;
+    filp ->private_data = NULL;
+    //in_dev = container_of(inode ->i_cdev, struct aesd_dev,cdev);
+    //(void)in_dev;
     return 0;
 }
 
@@ -53,11 +54,11 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     ssize_t ret = 0, offset = 0;
     PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
 
-    struct aesd_dev* in_dev;
+    struct aesd_dev *in_dev = NULL;
     in_dev = filp->private_data;
     struct aesd_buffer_entry *entry = NULL;
 
-    entry = in_dev->element;
+    //entry = in_dev->element;
 
     if (mutex_lock_interruptible(&in_dev->lock) != 0)
     {
@@ -79,10 +80,12 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
         }
         else {
             mutex_unlock(&in_dev->lock);
-	        return ret;
+	    return ret;
         }
     }
-
+    *f_pos += entry->size - offset; 
+    printk(KERN_INFO "New fpos %lld\n", *f_pos); 
+    mutex_unlock(&in_dev -> lock); 
     return ret;
 }
 
@@ -91,7 +94,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 {
     ssize_t retval = -ENOMEM;
     PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
-    char* lBuffptr = NULL;
+    const char* lBuffptr = NULL;
     struct aesd_dev* in_dev;
 	
     in_dev = filp->private_data;
@@ -105,25 +108,22 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         in_dev->element->buffptr = (char *)kzalloc(count, GFP_KERNEL);
     }
     else {
-        in_dev->element->buffptr = (char *)krealloc(in_dev->element->buffptr,
-                                              in_dev->element->size + count, GFP_KERNEL);
+        in_dev->element->buffptr = (char *)krealloc(in_dev->element->buffptr, in_dev->element->size + count, GFP_KERNEL);
     }
-
 	if (in_dev->element->buffptr != NULL) {
 		retval = copy_from_user((void *)in_dev->element->buffptr + in_dev->element->size, buf, count);
 		retval = count - retval;
-        in_dev->element->size += retval;
-
-        if (in_dev->element->buffptr[(in_dev->element->size - 1)] == '\n')
-        {
-            lBuffptr = aesd_circular_buffer_add_entry(&in_dev->circularBuffer, in_dev->element);
-            if (lBuffptr != NULL) {
-                kfree(lBuffptr);
-	    }
-	    in_dev->element->size = 0;
-            in_dev->element->buffptr = NULL;
-        }
-    }
+		in_dev->element->size += retval;
+		if (in_dev->element->buffptr[(in_dev->element->size - 1)] == '\n')
+		{
+		    lBuffptr = aesd_circular_buffer_add_entry(&in_dev->circularBuffer, in_dev->element);
+		    if (lBuffptr != NULL) {
+			kfree(lBuffptr);
+		    }
+		    in_dev->element->size = 0;
+		    in_dev->element->buffptr = NULL;
+		}
+	 }
     mutex_unlock(&in_dev->lock);
 
     return retval;
