@@ -16,6 +16,12 @@
 
 #include "aesd-circular-buffer.h"
 
+
+uint8_t nextPtr(uint8_t ptr){
+    ptr = (ptr+1)%(AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED);
+    return ptr; 
+}
+
 /**
  * @param buffer the buffer to search for corresponding offset.  Any necessary locking must be performed by caller.
  * @param char_offset the position to search for in the buffer list, describing the zero referenced
@@ -29,33 +35,21 @@
 struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct aesd_circular_buffer *buffer,
             size_t char_offset, size_t *entry_offset_byte_rtn )
 {
-    /**
-    * TODO: implement per description
-    */
-
-   size_t upd_offset=char_offset+1;
-   int buff_length=AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
-   uint8_t temp_store=buffer->out_offs;
-
-
-   while (buff_length!=0) //Check the entire buffer
-   {
-        if(buffer->entry[temp_store].size<upd_offset) //If the entry size is less than offset
-        {
-            upd_offset=upd_offset-buffer->entry[temp_store].size; //Update the offset 
-            if(temp_store==AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED-1) //Cycle back to start entry
-                temp_store=0;
-            else
-                temp_store++;
-        }
-        else
-        {
-            *entry_offset_byte_rtn = upd_offset-1; //return the offset in the entry
-            return &buffer->entry[temp_store]; //Return the entry
-        }
-        buff_length--;
-   }
-   return NULL;
+    struct aesd_buffer_entry *found_entry; 
+	uint8_t read_ptr =buffer -> out_offs; 
+	uint8_t count =0; 
+	while(count++ < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED) {
+		if(char_offset >= (buffer -> entry[read_ptr].size)) {
+			char_offset = char_offset - (buffer -> entry[read_ptr].size); 
+		}
+		else {
+			*entry_offset_byte_rtn = char_offset;
+			found_entry = &(buffer -> entry[read_ptr]); 
+			return found_entry;
+		}
+		read_ptr = nextPtr(read_ptr);
+	}
+	return NULL;  
 }
 
 /**
@@ -67,43 +61,23 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
 */
 const char *aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
 {
+    const char *temp =NULL; 
+    buffer -> entry[buffer-> in_offs] = *add_entry;  
+    buffer -> in_offs = nextPtr(buffer -> in_offs);	
+    if(buffer->full == false){
+         if(buffer -> in_offs == buffer -> out_offs) {
+                buffer -> full = true; 
+         }
+    }   
+    else {
+         //buffer -> in_offs = nextPtr(buffer -> in_offs);	
+         temp = buffer->entry[buffer->in_offs].buffptr;
+         buffer -> out_offs = nextPtr(buffer -> out_offs);	 
+    }
     /**
     * TODO: implement per description
     */
-
-    const char *freebuffer=NULL; //Pointer to return the replaced buffer entry to be freed by kernel driver
-
-   //Condition to check if the buffer is full
-   if((buffer->in_offs==buffer->out_offs)&&buffer->full)
-   {
-        if(buffer->out_offs==(AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED-1)) //If the enqueue is done on last element
-            buffer->out_offs=0; //Cycle back the read variable to zero
-        else
-            buffer->out_offs++; 
-
-        freebuffer = buffer->entry[buffer->in_offs].buffptr; //Store the address of the entry being replaced with a new entry
-
-        buffer->entry[buffer->in_offs]=*add_entry; //replace existing data
-        buffer->in_offs=buffer->out_offs; //Update write variable
-   }
-   else //Operations when buffer isn't full
-   {
-        if (buffer->in_offs==(AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED-1)) //Cycling back
-        {
-             buffer->entry[buffer->in_offs]=*add_entry;
-             buffer->in_offs=0;
-        }
-        else 
-        {
-            buffer->entry[buffer->in_offs]=*add_entry;
-            buffer->in_offs++;
-        }
-
-        if(buffer->in_offs == buffer->out_offs) //Turn flag true if read and write point to same entry 
-            buffer->full=true;
-   }
-   return freebuffer; //Return the pointer to the replaced entry
-   
+    return temp; 
 }
 
 /**
