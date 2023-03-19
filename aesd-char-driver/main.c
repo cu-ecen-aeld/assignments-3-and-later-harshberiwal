@@ -41,10 +41,10 @@ int aesd_open(struct inode *inode, struct file *filp)
 int aesd_release(struct inode *inode, struct file *filp)
 {
     PDEBUG("release");
-    //struct aesd_dev *in_dev;
-    filp ->private_data = NULL;
-    //in_dev = container_of(inode ->i_cdev, struct aesd_dev,cdev);
-    //(void)in_dev;
+    struct aesd_dev *in_dev;
+    //filp ->private_data = NULL;
+    in_dev = container_of(inode ->i_cdev, struct aesd_dev,cdev);
+    (void)in_dev;
     return 0;
 }
 
@@ -58,13 +58,13 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     in_dev = filp->private_data;
     struct aesd_buffer_entry *entry = NULL;
 
-    //entry = in_dev->element;
-
+    entry = in_dev->element;
+    
     if (mutex_lock_interruptible(&in_dev->lock) != 0)
     {
         printk(KERN_INFO "Failed to aquire Mutex.\n");
         mutex_unlock(&in_dev->lock);
-	    return ret;
+	return ret;
     }
 
     entry = aesd_circular_buffer_find_entry_offset_for_fpos(&in_dev->circularBuffer, *f_pos, &offset);
@@ -76,14 +76,14 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     }
     else {
         if(copy_to_user(buf, (entry->buffptr + offset), (entry->size - offset)) == 0) {
-            ret = entry->size - offset;
+            ret = (entry->size - offset);
         }
         else {
             mutex_unlock(&in_dev->lock);
 	    return ret;
         }
     }
-    *f_pos += entry->size - offset; 
+    *f_pos += (entry->size - offset); 
     printk(KERN_INFO "New fpos %lld\n", *f_pos); 
     mutex_unlock(&in_dev -> lock); 
     return ret;
@@ -171,7 +171,7 @@ int aesd_init_module(void)
      * TODO: initialize the AESD specific portion of the device
      */
     //H&S
-    mutex_init(&aesd_device.lock);
+   // mutex_init(&aesd_device.lock);
     aesd_device.element = kmalloc(sizeof(struct aesd_buffer_entry), GFP_KERNEL);
 	aesd_circular_buffer_init(&aesd_device.circularBuffer);
 
@@ -189,7 +189,8 @@ void aesd_cleanup_module(void)
     struct aesd_buffer_entry *element = NULL;
     dev_t devno = MKDEV(aesd_major, aesd_minor);
     int count=0;
-    //S
+    cdev_del(&aesd_device.cdev);
+	
     AESD_CIRCULAR_BUFFER_FOREACH(element, &aesd_device.circularBuffer, count) 
 	{
 		if(element->buffptr != NULL)
@@ -204,7 +205,7 @@ void aesd_cleanup_module(void)
 		kfree(aesd_device.element);
 	}
 
-    cdev_del(&aesd_device.cdev);
+    
     mutex_destroy(&aesd_device.lock);
     unregister_chrdev_region(devno, 1);
 }
