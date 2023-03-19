@@ -195,8 +195,8 @@ int aesd_init_module(void)
 
 void aesd_cleanup_module(void)
 {
-    struct aesd_buffer_entry *element = NULL;
     dev_t devno = MKDEV(aesd_major, aesd_minor);
+    struct aesd_buffer_entry *element = NULL;
     int count=0;
     //S
     AESD_CIRCULAR_BUFFER_FOREACH(element, &aesd_device.circularBuffer, count) 
@@ -204,12 +204,12 @@ void aesd_cleanup_module(void)
 		if(element->buffptr != NULL)
 		{
 			kfree(element->buffptr);
-			element->size = 0;
+			//element->size = 0;
 		}
 	}
 
     cdev_del(&aesd_device.cdev);
-    mutex_destroy(&aesd_device.lock);
+    //mutex_destroy(&aesd_device.lock);
     unregister_chrdev_region(devno, 1);
 }
 
