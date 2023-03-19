@@ -51,62 +51,42 @@ int aesd_release(struct inode *inode, struct file *filp)
 ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
                 loff_t *f_pos)
 {
-	//char* lBuffptr = NULL;
-	ssize_t i = 0, retval = 0, temp = 0, bytesToRead = 0;
-	/**
-	 * TODO: handle read
-	 */
-	struct aesd_dev* aDev = NULL;
-	struct aesd_buffer_entry *entry = NULL;
-	
-	printk(KERN_INFO "read %zu bytes with offset %lld",count,*f_pos);
+    ssize_t ret = 0, offset = 0;
+    PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
 
-	aDev = (struct aesd_dev*)filp->private_data;
-	entry = aDev->element;
-	{
-		if (mutex_lock_interruptible(&aDev->lock) != 0)
-		{
-			printk(KERN_INFO "Mutex failed to aquire.\n");
-			goto end;
-		}
-		
-		entry = aesd_circular_buffer_find_entry_offset_for_fpos(&aDev->circularBuffer, *f_pos, &temp);
+    struct aesd_dev *in_dev = NULL;
+    in_dev = filp->private_data;
+    struct aesd_buffer_entry *entry = NULL;
 
+    entry = in_dev->element;
+    
+    if (mutex_lock_interruptible(&in_dev->lock) != 0)
+    {
+        printk(KERN_INFO "Failed to aquire Mutex.\n");
+        mutex_unlock(&in_dev->lock);
+	return ret;
+    }
 
-		if(entry == NULL)
-		{
-			//continue;
-			goto end;
-		}
+    entry = aesd_circular_buffer_find_entry_offset_for_fpos(&in_dev->circularBuffer, *f_pos, &offset);
 
-		printk(KERN_INFO " %ld bytes, string: %s\n", entry->size, entry->buffptr);
-		//else if(entry->size > count
-
-		{
-			bytesToRead = entry->size - temp;
-			if(copy_to_user(buf, entry->buffptr + temp, bytesToRead) == 0)
-			{
-
-				retval = bytesToRead;
-			}
-			else
-			{
-				goto end;
-			}
-		}
-		{
-
-		}
-	}
-
-	//printk(KERN_INFO "New fpos %lld\n", *f_pos);
-	//if((entry->size - temp) != entry->size)
-	*f_pos += bytesToRead;
-
-	printk(KERN_INFO "New fpos %lld\n", *f_pos);
-end:
-	mutex_unlock(&aDev->lock);
-	return retval;
+    if(entry == NULL)
+    {
+        mutex_unlock(&in_dev->lock);
+        return ret;
+    }
+    else {
+        if(copy_to_user(buf, (entry->buffptr + offset), (entry->size - offset)) == 0) {
+            ret = (entry->size - offset);
+        }
+        else {
+            mutex_unlock(&in_dev->lock);
+	    return ret;
+        }
+    }
+    *f_pos += (entry->size - offset); 
+    printk(KERN_INFO "New fpos %lld\n", *f_pos); 
+    mutex_unlock(&in_dev -> lock); 
+    return ret;
 }
 
 ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
@@ -245,8 +225,8 @@ int aesd_init_module(void)
     /**
      * TODO: initialize the AESD specific portion of the device
      */
-    //H&S
-   // mutex_init(&aesd_device.lock);
+   
+    mutex_init(&aesd_device.lock);
     aesd_device.isComplete = 1;
     aesd_device.element = kmalloc(sizeof(struct aesd_buffer_entry), GFP_KERNEL);
 	aesd_circular_buffer_init(&aesd_device.circularBuffer);
