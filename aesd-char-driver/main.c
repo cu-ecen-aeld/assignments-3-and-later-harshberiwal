@@ -186,16 +186,16 @@ int aesd_init_module(void)
 
 void aesd_cleanup_module(void)
 {
-    struct aesd_buffer_entry *entry = NULL;
+    struct aesd_buffer_entry *element = NULL;
     dev_t devno = MKDEV(aesd_major, aesd_minor);
     int count=0;
     //S
     AESD_CIRCULAR_BUFFER_FOREACH(entry, &aesd_device.circularBuffer, count) 
 	{
-		if(entry->buffptr != NULL)
+		if(element->buffptr != NULL)
 		{
-			kfree(entry->buffptr);
-			entry->size = 0;
+			kfree(element->buffptr);
+			element->size = 0;
 		}
 	}
 
