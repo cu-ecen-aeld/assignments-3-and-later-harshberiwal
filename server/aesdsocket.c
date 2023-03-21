@@ -17,8 +17,16 @@
 #include "sys/time.h" 
 
 #define BUFFER_SIZE 		 100
+#define USE_AESD_CHAR_DEVICE    (1)
+
 #define PORT_NUMBER 		"9000"
-#define PATH_TO_FILE 		"/var/tmp/aesdsocketdata.txt"
+
+#if (USE_AESD_CHAR_DEVICE == 1)
+	#define PATH_TO_FILE		"/dev/aesdchar"
+#else 			
+	#define PATH_TO_FILE 		"/var/tmp/aesdsocketdata.txt"
+#endif
+
 #define MAX_PENDING_CONNECTIONS  10
 
 int sock_fd;
@@ -34,36 +42,38 @@ typedef struct thread_nodes{
 	SLIST_ENTRY(thread_nodes) entries; 
 }thread_nodes_t; 
 
-void sig_alarm_handler(int signo){
-    time_t time_now;
-    time_t ret = time(&time_now);
-    if(ret == -1){
-        syslog(LOG_ERR,"Unable to get the Time\r\n");
-        return;
-    }
-    struct tm tm_now;
-    localtime_r(&time_now,&tm_now);
-    char time_buff[BUFFER_SIZE];
-    size_t time_str_size = strftime(time_buff,BUFFER_SIZE,"timestamp:%a, %d %b %Y %T %z\n",&tm_now);
-    if (!time_str_size){
-        syslog(LOG_ERR,"Unable to get the Timestamp\n");
-        return;
-    }
-	pthread_mutex_lock(&mutex);
-	g_datafd = open(PATH_TO_FILE, O_WRONLY | O_APPEND); 
-	if(g_datafd == -1){
-		syslog(LOG_ERR,"Couldn't open the file\n");
+#if (USE_AESD_CHAR_DEVICE==0)
+	void sig_alarm_handler(int signo){
+	    time_t time_now;
+	    time_t ret = time(&time_now);
+	    if(ret == -1){
+		syslog(LOG_ERR,"Unable to get the Time\r\n");
 		return;
-	}
-	total_packets +=time_str_size; 
-	if((write(g_datafd, time_buff,time_str_size)) < time_str_size) {
-		 syslog(LOG_ERR,"Unable to write the Timestamp\n");
+	    }
+	    struct tm tm_now;
+	    localtime_r(&time_now,&tm_now);
+	    char time_buff[BUFFER_SIZE];
+	    size_t time_str_size = strftime(time_buff,BUFFER_SIZE,"timestamp:%a, %d %b %Y %T %z\n",&tm_now);
+	    if (!time_str_size){
+		syslog(LOG_ERR,"Unable to get the Timestamp\n");
 		return;
+	    }
+		pthread_mutex_lock(&mutex);
+		g_datafd = open(PATH_TO_FILE, O_WRONLY | O_APPEND); 
+		if(g_datafd == -1){
+			syslog(LOG_ERR,"Couldn't open the file\n");
+			return;
+		}
+		total_packets +=time_str_size; 
+		if((write(g_datafd, time_buff,time_str_size)) < time_str_size) {
+			 syslog(LOG_ERR,"Unable to write the Timestamp\n");
+			return;
+		}
+		close(g_datafd);
+		pthread_mutex_unlock(&mutex);
+	    return;
 	}
-	close(g_datafd);
-	pthread_mutex_unlock(&mutex);
-    return;
-}
+#endif
 
 void signal_handler(int signal_t)
 {
@@ -288,9 +298,9 @@ int main(int argc, char *argv[])
 	pthread_mutex_init(&mutex, NULL); 
 
 	signal(SIGALRM, sig_alarm_handler);
-
+#if (USE_AESD_CHAR_DEVICE==0)
 	timer_init(); 											//Initializing timer 
-
+#endif
 	while (!signal_interrupted)
 	{
 		conn_fd = accept(sock_fd,(struct sockaddr *)&clt_addr,&address_len);
