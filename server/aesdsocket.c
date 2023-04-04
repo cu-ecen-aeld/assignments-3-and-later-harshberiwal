@@ -129,8 +129,7 @@ void* thread_connection_func(void* thread_node_params) {
 			if (recv_status == -1){
 				syslog(LOG_ERR,"Unable to Recv Correctly\n");
 				t_node_params->complete_success_flag= true;
-				close(t_node_params->confd); 
-				//pthread_exit(NULL);
+				close(t_node_params->confd);
 				return NULL;
 			}
 			else if (recv_status == 0){	    
@@ -149,7 +148,6 @@ void* thread_connection_func(void* thread_node_params) {
 						syslog(LOG_ERR,"Realloc Failure. Couldn't allocate Additional Memory\r\n");
 						t_node_params->complete_success_flag= true;
 						close(t_node_params->confd); 
-						//pthread_exit(NULL);
 						return NULL;
 					}
 				}
@@ -363,9 +361,8 @@ thread_kill:
 	
 #if (USE_AESD_CHAR_DEVICE == 0)
 	close(file_fd);
-#endif
-	close(conn_fd);
 	unlink(PATH_TO_FILE);
+#endif
 	closelog(); 		//Close syslog
 	return 0;
 }
