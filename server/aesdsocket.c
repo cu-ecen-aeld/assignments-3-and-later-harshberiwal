@@ -109,6 +109,7 @@ void timer_init() {
 void* thread_connection_func(void* thread_node_params) {
 	char *h_dynamic_buff = NULL; 
 	struct aesd_seekto seekto;
+	const char *ioctl_string =  "AESDCHAR_IOCSEEKTO:"; 
 	int file_fd =0, packet_bytes =1,recv_status =0,nl_char_received =0,all_received =0;
 	if(thread_node_params == NULL){
   		return NULL;
@@ -155,8 +156,7 @@ void* thread_connection_func(void* thread_node_params) {
 			}
 		}
 
-		if (nl_char_received) {
-			const char *ioctl_string =  "AESDCHAR_IOCSEEKTO:";   
+		if (nl_char_received) {  
 			#if (USE_AESD_CHAR_DEVICE == 0)
 			pthread_mutex_lock(&mutex);
 			#endif 
