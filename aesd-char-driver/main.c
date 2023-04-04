@@ -137,8 +137,10 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         a_dev->buff = (char *)kmalloc(count, GFP_KERNEL);
         if (a_dev->buff == NULL) 
         {
+            PDEBUG(KERN_ERR "kmalloc Failure\n");
             retval = -ENOMEM;
-            kfree(element);
+            if(element != NULL)
+                kfree(element);
 	    mutex_unlock(&a_dev->lock);
   	    return retval;
         }
@@ -155,12 +157,13 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         a_dev->buff = (char *)krealloc(a_dev->buff, a_dev->buf_len + total_bytes, GFP_KERNEL);
         if (a_dev->buff == NULL) 
         {
+            PDEBUG(KERN_ERR "krealloc Failure\n");
             retval = -ENOMEM;
-            kfree(element);
+            if(element != NULL)
+                kfree(element);
 	    mutex_unlock(&a_dev->lock);
   	    return retval;
         }
-      
         memcpy(a_dev->buff + a_dev->buf_len, element, total_bytes);
         a_dev->buf_len += total_bytes;        
     }
@@ -171,12 +174,15 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         w_buffer.size = a_dev->buf_len;
         freed_buff = aesd_circular_buffer_add_entry(&a_dev->circularBuffer, &w_buffer);
     
-        if (freed_buff != NULL)
+        if (freed_buff != NULL) {
+            PDEBUG("freed buf is not NULL\n");
             kfree(freed_buff);
+        }
         a_dev->buf_len = 0;
     } 
     retval = count; 
-    kfree(element);
+    if(element != NULL)
+        kfree(element);
     mutex_unlock(&a_dev->lock);
     return retval;
 }
