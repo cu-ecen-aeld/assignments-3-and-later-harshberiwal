@@ -176,7 +176,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     
         if (freed_buff != NULL) {
             PDEBUG("freed buf is not NULL\n");
-            kfree(freed_buff);
+            //kfree(freed_buff);
         }
         a_dev->buf_len = 0;
     } 
