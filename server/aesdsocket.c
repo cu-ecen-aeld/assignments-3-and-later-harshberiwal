@@ -15,6 +15,7 @@
 #include "queue.h"
 #include "pthread.h"
 #include "sys/time.h" 
+#include "aesd_ioctl.h"
 
 #define BUFFER_SIZE 		 100
 #define USE_AESD_CHAR_DEVICE    (1)
@@ -32,7 +33,9 @@
 int sock_fd;
 bool signal_interrupted = false;
 pthread_mutex_t mutex; 
-int total_packets =0; 
+#if (USE_AESD_CHAR_DEVICE == 0)
+	int total_packets =0; 
+#endif
 int g_datafd= 0; 
 
 typedef struct thread_nodes{
@@ -105,114 +108,123 @@ void timer_init() {
 
 void* thread_connection_func(void* thread_node_params) {
 	char *h_dynamic_buff = NULL; 
+	struct aesd_seekto seekto;
 	int file_fd =0, packet_bytes =1,recv_status =0,nl_char_received =0,all_received =0;
 	if(thread_node_params == NULL){
   		return NULL;
 	}
 	thread_nodes_t *t_node_params= (thread_nodes_t *)thread_node_params;
 	h_dynamic_buff = (char*)malloc(sizeof(char));
-     	if (h_dynamic_buff == NULL) {
-         	syslog(LOG_ERR,"Malloc Failure. Couldn't allocate Initial Memory\n");
-         	t_node_params->complete_success_flag = true;
-			close(t_node_params->confd); 
-			return NULL;
-     	}	
-     	while (!all_received && !signal_interrupted){
-			nl_char_received = 0;
-			while((!nl_char_received) && (!all_received) && (!signal_interrupted)){
-				recv_status = recv(t_node_params -> confd,h_dynamic_buff+packet_bytes-1,1,0);
-				if (recv_status == -1){
-					syslog(LOG_ERR,"Unable to Recv Correctly\n");
-					t_node_params->complete_success_flag= true;
-					close(t_node_params->confd); 
-					//pthread_exit(NULL);
-					return NULL;
-				}
-				else if (recv_status == 0){	    
-					all_received = 1;   
-					packet_bytes--;     
-					syslog(LOG_INFO,"Closing Connection. All Bytes Received");     
+	if (h_dynamic_buff == NULL) {
+		syslog(LOG_ERR,"Malloc Failure. Couldn't allocate Initial Memory\n");
+		t_node_params->complete_success_flag = true;
+		close(t_node_params->confd); 
+		return NULL;
+	}	
+	while (!all_received && !signal_interrupted){
+		nl_char_received = 0;
+		while((!nl_char_received) && (!all_received) && (!signal_interrupted)){
+			recv_status = recv(t_node_params -> confd,h_dynamic_buff+packet_bytes-1,1,0);
+			if (recv_status == -1){
+				syslog(LOG_ERR,"Unable to Recv Correctly\n");
+				t_node_params->complete_success_flag= true;
+				close(t_node_params->confd); 
+				//pthread_exit(NULL);
+				return NULL;
+			}
+			else if (recv_status == 0){	    
+				all_received = 1;   
+				packet_bytes--;     
+				syslog(LOG_INFO,"Closing Connection. All Bytes Received");     
+			}
+			else{
+				if (h_dynamic_buff[packet_bytes-1] == '\n'){
+					nl_char_received = 1;
 				}
 				else{
-					if (h_dynamic_buff[packet_bytes-1] == '\n'){
-						nl_char_received = 1;
-					}
-					else{
-						packet_bytes ++;
-						h_dynamic_buff = realloc(h_dynamic_buff, (packet_bytes)*sizeof(char)); //allocate
-						if (h_dynamic_buff == NULL){
-							syslog(LOG_ERR,"Realloc Failure. Couldn't allocate Additional Memory\r\n");
-							t_node_params->complete_success_flag= true;
-							close(t_node_params->confd); 
-							//pthread_exit(NULL);
-							return NULL;
-						}
+					packet_bytes ++;
+					h_dynamic_buff = realloc(h_dynamic_buff, (packet_bytes)*sizeof(char)); //allocate
+					if (h_dynamic_buff == NULL){
+						syslog(LOG_ERR,"Realloc Failure. Couldn't allocate Additional Memory\r\n");
+						t_node_params->complete_success_flag= true;
+						close(t_node_params->confd); 
+						//pthread_exit(NULL);
+						return NULL;
 					}
 				}
 			}
-		
-			if (nl_char_received) {
-				pthread_mutex_lock(&mutex); 
-				file_fd = open(PATH_TO_FILE, O_APPEND | O_WRONLY); //Open the file in write only
-				if(file_fd==-1) {
-					syslog(LOG_ERR, "Could not open the file");
-					t_node_params->complete_success_flag= true;
-					close(t_node_params->confd); 
-					return NULL;
-				} 
+		}
+
+		if (nl_char_received) {
+			const char *ioctl_string =  "AESDCHAR_IOCSEEKTO:";   
+			#if (USE_AESD_CHAR_DEVICE == 0)
+			pthread_mutex_lock(&mutex);
+			#endif 
+			file_fd = open(PATH_TO_FILE, O_APPEND | O_RDWR); //Open the file in write only
+			if(file_fd==-1) {
+				syslog(LOG_ERR, "Could not open the file");
+				t_node_params->complete_success_flag= true;
+				close(t_node_params->confd); 
+				return NULL;
+			} 
+			
+			if (strncmp(h_dynamic_buff,ioctl_string,strlen(ioctl_string)) == 0)
+			{
+				sscanf(h_dynamic_buff, "AESDCHAR_IOCSEEKTO:%d,%d", &seekto.write_cmd, &seekto.write_cmd_offset);
+				if(ioctl(file_fd, AESDCHAR_IOCSEEKTO, &seekto))
+					syslog(LOG_ERR, "IOCTL couldn't be executed");
+			}  
+			else {  
 				if(write(file_fd, h_dynamic_buff,packet_bytes) < packet_bytes) {  //Writing to the File 
+					printf("Unable to Write all the bytes\n");
 					syslog(LOG_ERR,"Unable to Write all the bytes\n");
 					t_node_params->complete_success_flag= true;
 					close(t_node_params->confd); 
 					return NULL;
 				}
-				close(file_fd);
-				total_packets+=packet_bytes;
-				pthread_mutex_unlock(&mutex); 
-				packet_bytes = 1; 	   				
-				h_dynamic_buff = realloc(h_dynamic_buff, (packet_bytes)*sizeof(char)); 
-				if (h_dynamic_buff == NULL){
-					syslog(LOG_ERR,"Realloc Failure. Can't Resize");
-					t_node_params->complete_success_flag= true;
-					close(t_node_params->confd); 
-					return NULL;
-				}
+			}
+
+			#if (USE_AESD_CHAR_DEVICE == 0)
+			pthread_mutex_unlock(&mutex); 
+			#endif
+
+			packet_bytes = 1; 	   				
+			h_dynamic_buff = realloc(h_dynamic_buff, (packet_bytes)*sizeof(char)); 
+			if (h_dynamic_buff == NULL) {
+				syslog(LOG_ERR,"Realloc Failure. Can't Resize");
+				t_node_params->complete_success_flag= true;
+				close(t_node_params->confd); 
+				return NULL;
+			}
+
+			#if (USE_AESD_CHAR_DEVICE == 0)
 				pthread_mutex_lock(&mutex);
-				file_fd=open(PATH_TO_FILE,O_RDONLY); 					//Opening file to Read 
-				if(file_fd==-1) {
-					printf("Unable to open in read mode\n");
-					syslog(LOG_ERR, "Unable to open the File: %s \n", strerror(errno));
-					t_node_params->complete_success_flag= true;
-					close(t_node_params->confd); 
-					return NULL;
-				}
-				char send_buffer[total_packets]; 			        	//Storing contents to send
-				if(read(file_fd,&send_buffer,total_packets)==-1) {  	//Read the file and storing contents in a buffer
-					printf("Unable to read the file\n");
-					syslog(LOG_ERR, "Unable to Read from the file. Check Permissions: %s \n", strerror(errno));
-					t_node_params->complete_success_flag= true;
-					close(t_node_params->confd); 
-					return NULL;
-				}	
-				close(file_fd);
-				pthread_mutex_unlock(&mutex); 
-				
-				if(send(t_node_params ->confd,&send_buffer,total_packets,0)==-1) { 	//Send data packet to the client 
-					printf("Unable to send the contents\n");
+			#endif
+
+			char send_buffer[1];			        	//Storing content to send
+			while(read(file_fd,send_buffer,1)) {
+				if (!send(t_node_params->confd,send_buffer,1,0))
+				{
 					syslog(LOG_ERR, "Unable to send the buffer Contents to the client:%s \n", strerror(errno));
 					t_node_params->complete_success_flag= true;
 					close(t_node_params->confd); 
-					return NULL;
-				} 
+					return NULL;        
+				}
 			}
+			
+			#if (USE_AESD_CHAR_DEVICE == 0)
+				pthread_mutex_unlock(&mutex); 
+			#endif
+			
+			close(file_fd);
 		}
-		close(t_node_params->confd); 
-		syslog(LOG_INFO,"Closed connection"); 
-		free(h_dynamic_buff);
-		t_node_params->complete_success_flag = true; 
-		return t_node_params;
+	}
+	close(t_node_params->confd); 
+	syslog(LOG_INFO,"Closed connection"); 
+	free(h_dynamic_buff);
+	t_node_params->complete_success_flag = true; 
+	return t_node_params;
 }
-
 
 int main(int argc, char *argv[])
 { 
@@ -222,7 +234,9 @@ int main(int argc, char *argv[])
 	struct sockaddr_in clt_addr; 
 	thread_nodes_t *t_node; 
 	int total_conn =0 ; 
-	int file_fd; 
+	#if (USE_AESD_CHAR_DEVICE ==0)
+		int file_fd; 
+	#endif
 	thread_nodes_t *node = NULL;
 	thread_nodes_t *ptr = NULL;
 
@@ -246,7 +260,7 @@ int main(int argc, char *argv[])
 
 	//Get server address
 	memset(&hints,0,sizeof(hints));
-	hints.ai_flags=AI_PASSIVE; //Set this flag before passing to function
+	hints.ai_flags=AI_PASSIVE; 								//Set this flag before passing to function
 	hints.ai_family=AF_INET;
 	hints.ai_socktype=SOCK_STREAM;
 	if(getaddrinfo(NULL,PORT_NUMBER,&hints,&servinfo) !=0) {
@@ -286,21 +300,19 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	file_fd = open(PATH_TO_FILE,(O_RDWR|O_CREAT|O_TRUNC), S_IRWXU|S_IRGRP|S_IROTH); 	//Creating a new file with 744 octal value
+	// Initialize mutex for packet data file
+#if (USE_AESD_CHAR_DEVICE==0)
+	file_fd = open(PATH_TO_FILE,(O_RDWR|O_CREAT|O_TRUNC), 777); 	//Creating a new file with 744 octal value
  	if (file_fd==-1) {
 		syslog(LOG_ERR, "Unable to create the file%s \n", strerror(errno));
 		exit(EXIT_FAILURE);
 	}
-
 	close(file_fd); 
-	
-	// Initialize mutex for packet data file
-	pthread_mutex_init(&mutex, NULL); 
-
 	signal(SIGALRM, sig_alarm_handler);
-#if (USE_AESD_CHAR_DEVICE==0)
+	pthread_mutex_init(&mutex, NULL); 
 	timer_init(); 											//Initializing timer 
-#endif
+#endif	
+
 	while (!signal_interrupted)
 	{
 		conn_fd = accept(sock_fd,(struct sockaddr *)&clt_addr,&address_len);
@@ -349,9 +361,11 @@ thread_kill:
          syslog(LOG_INFO,"Killing all threads: %d\n",--total_conn);
     }
 	
+#if (USE_AESD_CHAR_DEVICE == 0)
 	close(file_fd);
+#endif
 	close(conn_fd);
 	unlink(PATH_TO_FILE);
-	closelog(); //Close syslog
+	closelog(); 		//Close syslog
 	return 0;
 }

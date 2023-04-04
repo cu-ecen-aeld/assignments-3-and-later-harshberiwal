@@ -71,7 +71,7 @@ const char* aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, 
     }   
     else {
          //buffer -> in_offs = nextPtr(buffer -> in_offs);	
-         temp = &buffer -> out_ffs; 
+         temp = &buffer -> out_offs; 
          buffer -> out_offs = nextPtr(buffer -> out_offs);	 
     }
     /**
