@@ -139,8 +139,8 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         {
             PDEBUG(KERN_ERR "kmalloc Failure\n");
             retval = -ENOMEM;
-            if(element != NULL)
-                kfree(element);
+           /*  if(element != NULL)
+                kfree(element); */
 	    mutex_unlock(&a_dev->lock);
   	    return retval;
         }
@@ -159,8 +159,8 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         {
             PDEBUG(KERN_ERR "krealloc Failure\n");
             retval = -ENOMEM;
-            if(element != NULL)
-                kfree(element);
+           /*  if(element != NULL)
+                kfree(element); */
 	    mutex_unlock(&a_dev->lock);
   	    return retval;
         }
@@ -181,8 +181,8 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         a_dev->buf_len = 0;
     } 
     retval = count; 
-    if(element != NULL)
-        kfree(element);
+ /*    if(element != NULL)
+        kfree(element); */
     mutex_unlock(&a_dev->lock);
     return retval;
 }
